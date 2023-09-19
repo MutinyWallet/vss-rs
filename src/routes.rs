@@ -6,6 +6,7 @@ use axum::headers::Authorization;
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
 use diesel::Connection;
+use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -28,6 +29,7 @@ pub async fn get_object_impl(
 ) -> anyhow::Result<Option<KeyValue>> {
     let mut conn = state.db_pool.get()?;
 
+    trace!("get_object_impl: {req:?}");
     let store_id = req.store_id.expect("must have");
 
     let item = VssItem::get_item(&mut conn, &store_id, &req.key)?;
@@ -40,12 +42,14 @@ pub async fn get_object(
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
 ) -> Result<Json<Option<KeyValue>>, (StatusCode, String)> {
+    debug!("get_object: {payload:?}");
     let store_id = verify_token(token.token(), &state)?;
 
     match payload.store_id {
         None => payload.store_id = Some(store_id),
         Some(ref id) => {
             if id != &store_id {
+                error!("Unauthorized: store_id mismatch");
                 return Err((
                     StatusCode::UNAUTHORIZED,
                     format!("Unauthorized: store_id mismatch"),
@@ -169,6 +173,6 @@ pub async fn list_key_versions(
 }
 
 pub(crate) fn handle_anyhow_error(err: anyhow::Error) -> (StatusCode, String) {
-    eprintln!("Error: {err:?}");
+    error!("Error: {err:?}");
     (StatusCode::BAD_REQUEST, format!("{err}"))
 }

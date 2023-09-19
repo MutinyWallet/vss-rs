@@ -22,6 +22,7 @@ pub struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    pretty_env_logger::try_init()?;
     // Load .env file
     dotenv::dotenv().ok();
 

@@ -6,6 +6,9 @@
 app = "vss-staging"
 primary_region = "dfw"
 
+[env]
+  RUST_LOG = "info"
+
 [build]
 
 [http_service]

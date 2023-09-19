@@ -10,7 +10,17 @@ pub mod schema;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
-#[derive(Queryable, Insertable, AsChangeset, Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[derive(
+    QueryableByName,
+    Queryable,
+    Insertable,
+    AsChangeset,
+    Serialize,
+    Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 #[diesel(table_name = vss_db)]
 pub struct VssItem {
