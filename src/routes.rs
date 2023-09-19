@@ -1,8 +1,8 @@
 use crate::auth::verify_token;
 use crate::models::VssItem;
-use crate::State;
+use crate::{State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN};
 use axum::headers::authorization::Bearer;
-use axum::headers::Authorization;
+use axum::headers::{Authorization, Origin};
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
 use diesel::Connection;
@@ -38,11 +38,13 @@ pub async fn get_object_impl(
 }
 
 pub async fn get_object(
+    origin: Option<TypedHeader<Origin>>,
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
 ) -> Result<Json<Option<KeyValue>>, (StatusCode, String)> {
     debug!("get_object: {payload:?}");
+    validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
     match payload.store_id {
@@ -91,10 +93,12 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 }
 
 pub async fn put_objects(
+    origin: Option<TypedHeader<Origin>>,
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<PutObjectsRequest>,
 ) -> Result<Json<()>, (StatusCode, String)> {
+    validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
     match payload.store_id {
@@ -148,10 +152,12 @@ pub async fn list_key_versions_impl(
 }
 
 pub async fn list_key_versions(
+    origin: Option<TypedHeader<Origin>>,
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<ListKeyVersionsRequest>,
 ) -> Result<Json<Vec<Value>>, (StatusCode, String)> {
+    validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
     match payload.store_id {
@@ -170,6 +176,25 @@ pub async fn list_key_versions(
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error(e)),
     }
+}
+
+fn validate_cors(origin: Option<TypedHeader<Origin>>) -> Result<(), (StatusCode, String)> {
+    if let Some(TypedHeader(origin)) = origin {
+        if origin.is_null() {
+            return Ok(());
+        }
+
+        let origin_str = origin.to_string();
+        if !ALLOWED_ORIGINS.contains(&origin_str.as_str())
+            && !origin_str.ends_with(ALLOWED_SUBDOMAIN)
+            && !origin_str.starts_with(ALLOWED_LOCALHOST)
+        {
+            // The origin is not in the allowed list block the request
+            return Err((StatusCode::NOT_FOUND, String::new()));
+        }
+    }
+
+    Ok(())
 }
 
 pub(crate) fn handle_anyhow_error(err: anyhow::Error) -> (StatusCode, String) {

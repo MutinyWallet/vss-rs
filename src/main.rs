@@ -13,6 +13,18 @@ mod auth;
 mod models;
 mod routes;
 
+const ALLOWED_ORIGINS: [&str; 6] = [
+    "https://app.mutinywallet.com",
+    "capacitor://localhost",
+    "https://signet-app.mutinywallet.com",
+    "http://localhost:3420",
+    "http://localhost",
+    "https://localhost",
+];
+
+const ALLOWED_SUBDOMAIN: &str = ".mutiny-web.pages.dev";
+const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
+
 #[derive(Clone)]
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
@@ -72,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(state.clone()))
         .layer(
             CorsLayer::new()
-                .allow_origin(Any) // todo copy CORS from old vss
+                .allow_origin(Any)
                 .allow_headers(vec![
                     http::header::CONTENT_TYPE,
                     http::header::AUTHORIZATION,
