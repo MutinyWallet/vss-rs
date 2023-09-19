@@ -69,7 +69,7 @@ pub async fn get_object(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PutObjectsRequest {
     pub store_id: Option<String>,
-    pub global_version: Option<u64>,
+    pub global_version: Option<i64>,
     pub transaction_items: Vec<KeyValue>,
 }
 
