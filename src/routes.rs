@@ -1,7 +1,10 @@
+use crate::auth::verify_token;
 use crate::models::VssItem;
 use crate::State;
+use axum::headers::authorization::Bearer;
+use axum::headers::Authorization;
 use axum::http::StatusCode;
-use axum::{Extension, Json};
+use axum::{Extension, Json, TypedHeader};
 use diesel::Connection;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -25,18 +28,32 @@ pub async fn get_object_impl(
 ) -> anyhow::Result<Option<KeyValue>> {
     let mut conn = state.db_pool.get()?;
 
-    let store_id = req.store_id.expect("must have"); // todo validate
+    let store_id = req.store_id.expect("must have");
 
     let item = VssItem::get_item(&mut conn, &store_id, &req.key)?;
 
-    Ok(item.and_then(|i| i.to_kv()))
+    Ok(item.and_then(|i| i.into_kv()))
 }
 
 pub async fn get_object(
+    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
-    Json(payload): Json<GetObjectRequest>,
+    Json(mut payload): Json<GetObjectRequest>,
 ) -> Result<Json<Option<KeyValue>>, (StatusCode, String)> {
-    // todo validate auth
+    let store_id = verify_token(token.token(), &state)?;
+
+    match payload.store_id {
+        None => payload.store_id = Some(store_id),
+        Some(ref id) => {
+            if id != &store_id {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    format!("Unauthorized: store_id mismatch"),
+                ));
+            }
+        }
+    }
+
     match get_object_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error(e)),
@@ -57,7 +74,7 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 
     // todo do something with global version?
 
-    let store_id = req.store_id.expect("must have"); // todo validate
+    let store_id = req.store_id.expect("must have");
 
     let mut conn = state.db_pool.get()?;
     conn.transaction(|conn| {
@@ -70,10 +87,24 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 }
 
 pub async fn put_objects(
+    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
-    Json(payload): Json<PutObjectsRequest>,
+    Json(mut payload): Json<PutObjectsRequest>,
 ) -> Result<Json<()>, (StatusCode, String)> {
-    // todo validate auth
+    let store_id = verify_token(token.token(), &state)?;
+
+    match payload.store_id {
+        None => payload.store_id = Some(store_id),
+        Some(ref id) => {
+            if id != &store_id {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    format!("Unauthorized: store_id mismatch"),
+                ));
+            }
+        }
+    }
+
     match put_objects_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error(e)),
@@ -95,7 +126,7 @@ pub async fn list_key_versions_impl(
     let mut conn = state.db_pool.get()?;
 
     // todo pagination
-    let store_id = req.store_id.expect("must have"); // todo validate
+    let store_id = req.store_id.expect("must have");
 
     let versions = VssItem::list_key_versions(&mut conn, &store_id, req.key_prefix.as_deref())?;
 
@@ -113,10 +144,24 @@ pub async fn list_key_versions_impl(
 }
 
 pub async fn list_key_versions(
+    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
-    Json(payload): Json<ListKeyVersionsRequest>,
+    Json(mut payload): Json<ListKeyVersionsRequest>,
 ) -> Result<Json<Vec<Value>>, (StatusCode, String)> {
-    // todo validate auth
+    let store_id = verify_token(token.token(), &state)?;
+
+    match payload.store_id {
+        None => payload.store_id = Some(store_id),
+        Some(ref id) => {
+            if id != &store_id {
+                return Err((
+                    StatusCode::UNAUTHORIZED,
+                    format!("Unauthorized: store_id mismatch"),
+                ));
+            }
+        }
+    }
+
     match list_key_versions_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
         Err(e) => Err(handle_anyhow_error(e)),

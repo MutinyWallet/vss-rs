@@ -33,7 +33,7 @@ pub struct NewVssItem {
 }
 
 impl VssItem {
-    pub fn to_kv(self) -> Option<KeyValue> {
+    pub fn into_kv(self) -> Option<KeyValue> {
         self.value.map(|value| KeyValue {
             key: self.key,
             value,
@@ -97,6 +97,7 @@ mod test {
     use diesel::r2d2::{ConnectionManager, Pool};
     use diesel::{Connection, PgConnection, RunQueryDsl};
     use diesel_migrations::MigrationHarness;
+    use secp256k1::Secp256k1;
     use std::str::FromStr;
 
     const PUBKEY: &str = "04547d92b618856f4eda84a64ec32f1694c9608a3f9dc73e91f08b5daa087260164fbc9e2a563cf4c5ef9f4c614fd9dfca7582f8de429a4799a4b202fbe80a7db5";
@@ -119,7 +120,13 @@ mod test {
 
         let auth_key = secp256k1::PublicKey::from_str(PUBKEY).unwrap();
 
-        State { db_pool, auth_key }
+        let secp = Secp256k1::new();
+
+        State {
+            db_pool,
+            auth_key,
+            secp,
+        }
     }
 
     fn clear_database(state: &State) {

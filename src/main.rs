@@ -8,9 +8,10 @@ use clap::Parser;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
 use diesel_migrations::MigrationHarness;
-use secp256k1::PublicKey;
+use secp256k1::{All, PublicKey, Secp256k1};
 use tower_http::cors::{Any, CorsLayer};
 
+mod auth;
 mod config;
 mod models;
 mod routes;
@@ -19,6 +20,7 @@ mod routes;
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
     auth_key: PublicKey,
+    secp: Secp256k1<All>,
 }
 
 #[tokio::main]
@@ -42,7 +44,13 @@ async fn main() -> anyhow::Result<()> {
         .run_pending_migrations(MIGRATIONS)
         .expect("migrations could not run");
 
-    let state = State { db_pool, auth_key };
+    let secp = Secp256k1::new();
+
+    let state = State {
+        db_pool,
+        auth_key,
+        secp,
+    };
 
     let addr: std::net::SocketAddr = format!("{}:{}", config.bind, config.port)
         .parse()
