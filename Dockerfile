@@ -8,7 +8,9 @@ RUN --mount=type=cache,target=/usr/local/cargo,from=rust:latest,source=/usr/loca
     cargo build --release && mv ./target/release/vss-rs ./vss-rs
 
 # Runtime image
-FROM debian:bullseye-slim
+FROM debian:bookworm-slim
+
+RUN apt update && apt install -y openssl libpq-dev pkg-config libc6
 
 # Run as "app" user
 RUN useradd -ms /bin/bash app
@@ -18,6 +20,9 @@ WORKDIR /app
 
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /usr/src/app/vss-rs /app/vss-rs
+
+ENV VSS_PORT=3000
+EXPOSE $VSS_PORT
 
 # Run the app
 CMD ./vss-rs
