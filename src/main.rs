@@ -1,10 +1,8 @@
-use crate::config::Config;
 use crate::models::MIGRATIONS;
 use crate::routes::*;
 use axum::http::{Method, StatusCode, Uri};
 use axum::routing::{post, put};
 use axum::{http, Extension, Router};
-use clap::Parser;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
 use diesel_migrations::MigrationHarness;
@@ -12,7 +10,6 @@ use secp256k1::{All, PublicKey, Secp256k1};
 use tower_http::cors::{Any, CorsLayer};
 
 mod auth;
-mod config;
 mod models;
 mod routes;
 
@@ -25,13 +22,23 @@ pub struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let config: Config = Config::parse();
+    // Load .env file
+    dotenv::dotenv().ok();
 
-    let auth_key_bytes = hex::decode(config.auth_key)?;
+    // get values key from env
+    let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let auth_key = std::env::var("AUTH_KEY").expect("AUTH_KEY must be set");
+    let port: i64 = std::env::var("VSS_PORT")
+        .ok()
+        .map(|p| p.parse::<i64>())
+        .transpose()?
+        .unwrap_or(3000);
+
+    let auth_key_bytes = hex::decode(auth_key)?;
     let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
 
     // DB management
-    let manager = ConnectionManager::<PgConnection>::new(&config.pg_url);
+    let manager = ConnectionManager::<PgConnection>::new(&pg_url);
     let db_pool = Pool::builder()
         .max_size(16)
         .test_on_check_out(true)
@@ -52,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
         secp,
     };
 
-    let addr: std::net::SocketAddr = format!("{}:{}", config.bind, config.port)
+    let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
         .parse()
         .expect("Failed to parse bind/port for webserver");
 
