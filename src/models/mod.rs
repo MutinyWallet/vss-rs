@@ -158,13 +158,19 @@ mod test {
         assert_eq!(versions[0].0, key);
         assert_eq!(versions[0].1, version);
 
+        let new_value = "new_value";
+        let new_version = version + 1;
+
+        VssItem::put_item(&mut conn, store_id, key, new_value, new_version).unwrap();
+
         let item = VssItem::get_item(&mut conn, store_id, key)
             .unwrap()
             .unwrap();
 
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
-        assert_eq!(item.value.unwrap(), value);
+        assert_eq!(item.value.unwrap(), new_value);
+        assert_eq!(item.version, new_version);
 
         clear_database(&state);
     }
