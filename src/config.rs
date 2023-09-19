@@ -7,6 +7,9 @@ pub struct Config {
     /// Postgres connection string
     #[clap(long)]
     pub pg_url: String,
+    /// JWT Authorization Public Key
+    #[clap(long)]
+    pub auth_key: String,
     /// Bind address for zap-tunnel's webserver
     #[clap(default_value = "0.0.0.0", long)]
     pub bind: String,
