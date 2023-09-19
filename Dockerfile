@@ -21,7 +21,7 @@ WORKDIR /app
 # Get compiled binaries from builder's cargo install directory
 COPY --from=builder /usr/src/app/vss-rs /app/vss-rs
 
-ENV VSS_PORT=3000
+ENV VSS_PORT=8080
 EXPOSE $VSS_PORT
 
 # Run the app

@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
         .ok()
         .map(|p| p.parse::<i64>())
         .transpose()?
-        .unwrap_or(3000);
+        .unwrap_or(8080);
 
     let auth_key_bytes = hex::decode(auth_key)?;
     let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
