@@ -104,12 +104,12 @@ async fn main() -> anyhow::Result<()> {
 
     // Await the server to receive the shutdown signal
     if let Err(e) = graceful.await {
-        eprintln!("shutdown error: {}", e);
+        eprintln!("shutdown error: {e}");
     }
 
     Ok(())
 }
 
 async fn fallback(uri: Uri) -> (StatusCode, String) {
-    (StatusCode::NOT_FOUND, format!("No route for {}", uri))
+    (StatusCode::NOT_FOUND, format!("No route for {uri}"))
 }

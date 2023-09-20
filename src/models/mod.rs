@@ -92,7 +92,7 @@ impl VssItem {
         let res = match prefix {
             None => table.load::<(String, i64)>(conn)?,
             Some(prefix) => table
-                .filter(vss_db::key.ilike(format!("{}%", prefix)))
+                .filter(vss_db::key.ilike(format!("{prefix}%")))
                 .load::<(String, i64)>(conn)?,
         };
 
