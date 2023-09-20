@@ -17,6 +17,22 @@ pub struct KeyValue {
     pub version: i64,
 }
 
+macro_rules! check_store_id {
+    ($payload:ident, $store_id:expr) => {
+        match $payload.store_id {
+            None => $payload.store_id = Some($store_id),
+            Some(ref id) => {
+                if id != &$store_id {
+                    return Err((
+                        StatusCode::UNAUTHORIZED,
+                        format!("Unauthorized: store_id mismatch"),
+                    ));
+                }
+            }
+        }
+    };
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetObjectRequest {
     pub store_id: Option<String>,
@@ -47,18 +63,7 @@ pub async fn get_object(
     validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
-    match payload.store_id {
-        None => payload.store_id = Some(store_id),
-        Some(ref id) => {
-            if id != &store_id {
-                error!("Unauthorized: store_id mismatch");
-                return Err((
-                    StatusCode::UNAUTHORIZED,
-                    format!("Unauthorized: store_id mismatch"),
-                ));
-            }
-        }
-    }
+    check_store_id!(payload, store_id);
 
     match get_object_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
@@ -101,17 +106,7 @@ pub async fn put_objects(
     validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
-    match payload.store_id {
-        None => payload.store_id = Some(store_id),
-        Some(ref id) => {
-            if id != &store_id {
-                return Err((
-                    StatusCode::UNAUTHORIZED,
-                    format!("Unauthorized: store_id mismatch"),
-                ));
-            }
-        }
-    }
+    check_store_id!(payload, store_id);
 
     match put_objects_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
@@ -160,17 +155,7 @@ pub async fn list_key_versions(
     validate_cors(origin)?;
     let store_id = verify_token(token.token(), &state)?;
 
-    match payload.store_id {
-        None => payload.store_id = Some(store_id),
-        Some(ref id) => {
-            if id != &store_id {
-                return Err((
-                    StatusCode::UNAUTHORIZED,
-                    format!("Unauthorized: store_id mismatch"),
-                ));
-            }
-        }
-    }
+    check_store_id!(payload, store_id);
 
     match list_key_versions_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
