@@ -8,6 +8,9 @@ primary_region = "dfw"
 
 [env]
   RUST_LOG = "info"
+  MIGRATION_URL = "https://storage-staging.mutinywallet.com/migration"
+  MIGRATION_START_INDEX = "0"
+  MIGRATION_BATCH_SIZE = "100"
 
 [build]
 

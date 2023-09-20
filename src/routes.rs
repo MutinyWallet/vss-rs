@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 pub struct KeyValue {
     pub key: String,
     pub value: String,
-    pub version: i64,
+    pub version: u64,
 }
 
 macro_rules! check_store_id {
@@ -74,7 +74,7 @@ pub async fn get_object(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PutObjectsRequest {
     pub store_id: Option<String>,
-    pub global_version: Option<i64>,
+    pub global_version: Option<u64>,
     pub transaction_items: Vec<KeyValue>,
 }
 

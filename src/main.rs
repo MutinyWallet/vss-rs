@@ -1,7 +1,7 @@
 use crate::models::MIGRATIONS;
 use crate::routes::*;
 use axum::http::{Method, StatusCode, Uri};
-use axum::routing::{post, put};
+use axum::routing::{get, post, put};
 use axum::{http, Extension, Router};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
@@ -10,6 +10,7 @@ use secp256k1::{All, PublicKey, Secp256k1};
 use tower_http::cors::{Any, CorsLayer};
 
 mod auth;
+mod migration;
 mod models;
 mod routes;
 
@@ -80,6 +81,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/getObject", post(get_object))
         .route("/putObjects", put(put_objects))
         .route("/listKeyVersions", post(list_key_versions))
+        .route("/migration", get(migration::migration))
         .fallback(fallback)
         .layer(Extension(state.clone()))
         .layer(

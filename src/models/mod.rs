@@ -47,7 +47,7 @@ impl VssItem {
         self.value.map(|value| KeyValue {
             key: self.key,
             value,
-            version: self.version,
+            version: self.version as u64,
         })
     }
 
@@ -68,8 +68,15 @@ impl VssItem {
         store_id: &str,
         key: &str,
         value: &str,
-        version: i64,
+        version: u64,
     ) -> anyhow::Result<()> {
+        // safely convert u64 to i64
+        let version = if version >= i64::MAX as u64 {
+            i64::MAX
+        } else {
+            version as i64
+        };
+
         sql_query(include_str!("put_item.sql"))
             .bind::<Text, _>(store_id)
             .bind::<Text, _>(key)
@@ -166,7 +173,7 @@ mod test {
 
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
-        assert_eq!(versions[0].1, version);
+        assert_eq!(versions[0].1, version as i64);
 
         let new_value = "new_value";
         let new_version = version + 1;
@@ -180,7 +187,7 @@ mod test {
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), new_value);
-        assert_eq!(item.version, new_version);
+        assert_eq!(item.version, new_version as i64);
 
         clear_database(&state);
     }
@@ -193,7 +200,7 @@ mod test {
         let store_id = "max_test_store_id";
         let key = "max_test";
         let value = "test_value";
-        let version = u32::MAX as i64;
+        let version = u32::MAX as u64;
 
         let mut conn = state.db_pool.get().unwrap();
         VssItem::put_item(&mut conn, store_id, key, value, version).unwrap();
@@ -243,12 +250,12 @@ mod test {
         let versions = VssItem::list_key_versions(&mut conn, store_id, Some("kv")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
-        assert_eq!(versions[0].1, version);
+        assert_eq!(versions[0].1, version as i64);
 
         let versions = VssItem::list_key_versions(&mut conn, store_id, Some("other")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key1);
-        assert_eq!(versions[0].1, version);
+        assert_eq!(versions[0].1, version as i64);
 
         clear_database(&state);
     }
