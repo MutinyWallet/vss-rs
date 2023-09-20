@@ -163,6 +163,10 @@ pub async fn list_key_versions(
     }
 }
 
+pub async fn health_check() -> Result<Json<()>, (StatusCode, String)> {
+    Ok(Json(()))
+}
+
 fn validate_cors(origin: Option<TypedHeader<Origin>>) -> Result<(), (StatusCode, String)> {
     if let Some(TypedHeader(origin)) = origin {
         if origin.is_null() {

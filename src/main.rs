@@ -78,6 +78,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Failed to parse bind/port for webserver");
 
     let server_router = Router::new()
+        .route("/health-check", get(health_check))
         .route("/getObject", post(get_object))
         .route("/putObjects", put(put_objects))
         .route("/listKeyVersions", post(list_key_versions))
