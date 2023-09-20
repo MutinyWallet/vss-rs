@@ -20,6 +20,10 @@ primary_region = "dfw"
   auto_start_machines = true
   min_machines_running = 1
   processes = ["app"]
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
 
 [[http_service.checks]]
   grace_period = "10s"
