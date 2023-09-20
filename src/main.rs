@@ -42,9 +42,9 @@ async fn main() -> anyhow::Result<()> {
     // get values key from env
     let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let auth_key = std::env::var("AUTH_KEY").expect("AUTH_KEY must be set");
-    let port: i64 = std::env::var("VSS_PORT")
+    let port: u16 = std::env::var("VSS_PORT")
         .ok()
-        .map(|p| p.parse::<i64>())
+        .map(|p| p.parse::<u16>())
         .transpose()?
         .unwrap_or(8080);
 
