@@ -13,10 +13,11 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct KeyValue {
     pub key: String,
-    pub value: String,
-    pub version: u64,
+    pub value: String, // TODO this is supposed to be Vec<u8> to be VSS compatible
+    pub version: u64,  // TODO i64 for VSS
 }
 
+// TODO nit, change name to "ensure_store_id" since it sets it if it didn't exist
 macro_rules! check_store_id {
     ($payload:ident, $store_id:expr) => {
         match $payload.store_id {

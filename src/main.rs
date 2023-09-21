@@ -54,13 +54,15 @@ async fn main() -> anyhow::Result<()> {
     // DB management
     let manager = ConnectionManager::<PgConnection>::new(&pg_url);
     let db_pool = Pool::builder()
-        .max_size(16)
+        .max_size(16) // TODO should this be bigger?
         .test_on_check_out(true)
         .build(manager)
         .expect("Could not build connection pool");
 
     // run migrations
     let mut connection = db_pool.get()?;
+    // TODO not sure if code should handle the migration, we probably need to shut down
+    // then migrate and then boot back up since there could be multiple instances running
     connection
         .run_pending_migrations(MIGRATIONS)
         .expect("migrations could not run");
@@ -87,12 +89,12 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(state.clone()))
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
+                .allow_origin(Any) // TODO do not allow all
                 .allow_headers(vec![
                     http::header::CONTENT_TYPE,
                     http::header::AUTHORIZATION,
                 ])
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS]),
+                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS]), // delete?
         );
 
     let server = axum::Server::bind(&addr).serve(server_router.into_make_service());
