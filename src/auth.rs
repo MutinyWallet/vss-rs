@@ -28,8 +28,7 @@ fn validate_jwt_from_user(
 ) -> anyhow::Result<String> {
     let untrusted_token = UntrustedToken::new(token_str)?;
 
-    #[allow(deprecated)]
-    let token: Token<CustomClaims> = es256k1.validate_integrity(&untrusted_token, &auth_key)?;
+    let token: Token<CustomClaims> = es256k1.validator(&auth_key).validate(&untrusted_token)?;
 
     let time_options = TimeOptions::default();
     token.claims().validate_expiration(&time_options)?;
