@@ -2,10 +2,10 @@ CREATE TABLE vss_db
 (
     store_id TEXT NOT NULL CHECK (store_id != ''),
     key TEXT NOT NULL,
-    value TEXT,
+    value bytea,
     version BIGINT NOT NULL,
-    created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    updated_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    created_date TIMESTAMP DEFAULT '2023-07-13'::TIMESTAMP NOT NULL,
+    updated_date TIMESTAMP DEFAULT '2023-07-13'::TIMESTAMP NOT NULL,
     PRIMARY KEY (store_id, key)
 );
 
