@@ -1,12 +1,14 @@
-use crate::models::MIGRATIONS;
 use crate::routes::*;
 use axum::headers::Origin;
-use axum::http::{HeaderMap, StatusCode, Uri};
+use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{get, post, put};
-use axum::{Extension, Router, TypedHeader};
-use diesel::{Connection, PgConnection};
-use diesel_migrations::MigrationHarness;
+use axum::{http, Extension, Router, TypedHeader};
+use openssl::ssl::{SslConnector, SslMethod};
+use postgres_openssl::MakeTlsConnector;
 use secp256k1::{All, PublicKey, Secp256k1};
+use std::sync::Arc;
+use tokio_postgres::Client;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 mod auth;
 mod kv;
@@ -28,9 +30,9 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 
 #[derive(Clone)]
 pub struct State {
-    pg_url: String,
-    auth_key: PublicKey,
-    secp: Secp256k1<All>,
+    pub client: Arc<Client>,
+    pub auth_key: PublicKey,
+    pub secp: Secp256k1<All>,
 }
 
 #[tokio::main]
@@ -51,19 +53,24 @@ async fn main() -> anyhow::Result<()> {
     let auth_key_bytes = hex::decode(auth_key)?;
     let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
 
-    // DB management
-    let mut connection = PgConnection::establish(&pg_url).unwrap();
+    let builder = SslConnector::builder(SslMethod::tls())?;
+    let connector = MakeTlsConnector::new(builder.build());
 
-    // TODO not sure if code should handle the migration, could be dangerous with multiple instances
-    // run migrations
-    connection
-        .run_pending_migrations(MIGRATIONS)
-        .expect("migrations could not run");
+    // Connect to the database.
+    let (client, connection) = tokio_postgres::connect(&pg_url, connector).await?;
+
+    // The connection object performs the actual communication with the database,
+    // so spawn it off to run on its own.
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("db connection error: {e}");
+        }
+    });
 
     let secp = Secp256k1::new();
 
     let state = State {
-        pg_url,
+        client: Arc::new(client),
         auth_key,
         secp,
     };
@@ -82,6 +89,26 @@ async fn main() -> anyhow::Result<()> {
         .route("/v2/listKeyVersions", post(list_key_versions))
         .route("/migration", get(migration::migration))
         .fallback(fallback)
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::predicate(
+                    |origin: &HeaderValue, _request_parts: &Parts| {
+                        let Ok(origin) = origin.to_str() else {
+                            return false;
+                        };
+
+                        valid_origin(origin)
+                    },
+                ))
+                .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ]),
+        )
         .layer(Extension(state));
 
     let server = axum::Server::bind(&addr).serve(server_router.into_make_service());
@@ -102,20 +129,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fallback(
-    origin: Option<TypedHeader<Origin>>,
-    uri: Uri,
-) -> (StatusCode, HeaderMap, String) {
-    let origin = match validate_cors(origin) {
-        Ok(origin) => origin,
-        Err((status, headers, msg)) => return (status, headers, msg),
+async fn fallback(origin: Option<TypedHeader<Origin>>, uri: Uri) -> (StatusCode, String) {
+    if let Err((status, msg)) = validate_cors(origin) {
+        return (status, msg);
     };
 
-    let headers = create_cors_headers(&origin);
-
-    (
-        StatusCode::NOT_FOUND,
-        headers,
-        format!("No route for {uri}"),
-    )
+    (StatusCode::NOT_FOUND, format!("No route for {uri}"))
 }

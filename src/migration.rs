@@ -6,7 +6,6 @@ use axum::headers::Authorization;
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::{Connection, PgConnection};
 use log::{error, info};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
@@ -66,8 +65,6 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
 
     let mut finished = false;
 
-    let mut conn = PgConnection::establish(&state.pg_url).unwrap();
-
     info!("Starting migration");
     while !finished {
         info!("Fetching {limit} items from offset {offset}");
@@ -81,15 +78,18 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
         let items: Vec<Item> = resp.into_json()?;
 
         // Insert values into DB
-        conn.transaction::<_, anyhow::Error, _>(|conn| {
-            for item in items.iter() {
-                if let Ok(value) = base64::decode(&item.value) {
-                    VssItem::put_item(conn, &item.store_id, &item.key, &value, item.version)?;
-                }
+        for item in items.iter() {
+            if let Ok(value) = base64::decode(&item.value) {
+                VssItem::put_item(
+                    &state.client,
+                    &item.store_id,
+                    &item.key,
+                    &value,
+                    item.version,
+                )
+                .await?;
             }
-
-            Ok(())
-        })?;
+        }
 
         if items.len() < limit {
             finished = true;

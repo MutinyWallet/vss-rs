@@ -3,27 +3,21 @@ use crate::kv::{KeyValue, KeyValueOld};
 use crate::models::VssItem;
 use crate::{State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN};
 use axum::headers::authorization::Bearer;
-use axum::headers::{Authorization, HeaderMap, Origin};
-use axum::http::header::{
-    ACCESS_CONTROL_ALLOW_HEADERS, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-    CONTENT_TYPE,
-};
+use axum::headers::{Authorization, Origin};
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
-use diesel::{Connection, PgConnection};
 use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 macro_rules! ensure_store_id {
-    ($payload:ident, $store_id:expr, $headers:ident) => {
+    ($payload:ident, $store_id:expr) => {
         match $payload.store_id {
             None => $payload.store_id = Some($store_id),
             Some(ref id) => {
                 if id != &$store_id {
                     return Err((
                         StatusCode::UNAUTHORIZED,
-                        $headers,
                         format!("Unauthorized: store_id mismatch"),
                     ));
                 }
@@ -45,8 +39,7 @@ pub async fn get_object_impl(
     trace!("get_object_impl: {req:?}");
     let store_id = req.store_id.expect("must have");
 
-    let mut conn = PgConnection::establish(&state.pg_url).unwrap();
-    let item = VssItem::get_item(&mut conn, &store_id, &req.key)?;
+    let item = VssItem::get_item(&state.client, &store_id, &req.key).await?;
 
     Ok(item.and_then(|i| i.into_kv()))
 }
@@ -56,20 +49,18 @@ pub async fn get_object(
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
-) -> Result<(HeaderMap, Json<Option<KeyValueOld>>), (StatusCode, HeaderMap, String)> {
+) -> Result<Json<Option<KeyValueOld>>, (StatusCode, String)> {
     debug!("get_object: {payload:?}");
-    let origin = validate_cors(origin)?;
-    let mut headers = create_cors_headers(&origin);
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+    validate_cors(origin)?;
 
-    let store_id = verify_token(token.token(), &state, &headers)?;
+    let store_id = verify_token(token.token(), &state)?;
 
-    ensure_store_id!(payload, store_id, headers);
+    ensure_store_id!(payload, store_id);
 
     match get_object_impl(payload, &state).await {
-        Ok(Some(res)) => Ok((headers, Json(Some(res.into())))),
-        Ok(None) => Ok((headers, Json(None))),
-        Err(e) => Err(handle_anyhow_error(e, headers)),
+        Ok(Some(res)) => Ok(Json(Some(res.into()))),
+        Ok(None) => Ok(Json(None)),
+        Err(e) => Err(handle_anyhow_error("get_object", e)),
     }
 }
 
@@ -78,19 +69,17 @@ pub async fn get_object_v2(
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
-) -> Result<Json<Option<KeyValue>>, (StatusCode, HeaderMap, String)> {
+) -> Result<Json<Option<KeyValue>>, (StatusCode, String)> {
     debug!("get_object v2: {payload:?}");
-    let origin = validate_cors(origin)?;
-    let mut headers = create_cors_headers(&origin);
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+    validate_cors(origin)?;
 
-    let store_id = verify_token(token.token(), &state, &headers)?;
+    let store_id = verify_token(token.token(), &state)?;
 
-    ensure_store_id!(payload, store_id, headers);
+    ensure_store_id!(payload, store_id);
 
     match get_object_impl(payload, &state).await {
         Ok(res) => Ok(Json(res)),
-        Err(e) => Err(handle_anyhow_error(e, headers)),
+        Err(e) => Err(handle_anyhow_error("get_object_v2", e)),
     }
 }
 
@@ -110,14 +99,12 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 
     let store_id = req.store_id.expect("must have");
 
-    let mut conn = PgConnection::establish(&state.pg_url).unwrap();
-    conn.transaction(|conn| {
-        for kv in req.transaction_items {
-            VssItem::put_item(conn, &store_id, &kv.key, &kv.value.0, kv.version)?;
-        }
+    // todo use transaction
+    for kv in req.transaction_items {
+        VssItem::put_item(&state.client, &store_id, &kv.key, &kv.value.0, kv.version).await?;
+    }
 
-        Ok(())
-    })
+    Ok(())
 }
 
 pub async fn put_objects(
@@ -125,18 +112,16 @@ pub async fn put_objects(
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<PutObjectsRequest>,
-) -> Result<(HeaderMap, Json<()>), (StatusCode, HeaderMap, String)> {
-    let origin = validate_cors(origin)?;
-    let mut headers = create_cors_headers(&origin);
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+) -> Result<Json<()>, (StatusCode, String)> {
+    validate_cors(origin)?;
 
-    let store_id = verify_token(token.token(), &state, &headers)?;
+    let store_id = verify_token(token.token(), &state)?;
 
-    ensure_store_id!(payload, store_id, headers);
+    ensure_store_id!(payload, store_id);
 
     match put_objects_impl(payload, &state).await {
-        Ok(res) => Ok((headers, Json(res))),
-        Err(e) => Err(handle_anyhow_error(e, headers)),
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(handle_anyhow_error("put_objects", e)),
     }
 }
 
@@ -155,8 +140,8 @@ pub async fn list_key_versions_impl(
     // todo pagination
     let store_id = req.store_id.expect("must have");
 
-    let mut conn = PgConnection::establish(&state.pg_url).unwrap();
-    let versions = VssItem::list_key_versions(&mut conn, &store_id, req.key_prefix.as_deref())?;
+    let versions =
+        VssItem::list_key_versions(&state.client, &store_id, req.key_prefix.as_ref()).await?;
 
     let json = versions
         .into_iter()
@@ -176,18 +161,16 @@ pub async fn list_key_versions(
     TypedHeader(token): TypedHeader<Authorization<Bearer>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<ListKeyVersionsRequest>,
-) -> Result<(HeaderMap, Json<Vec<Value>>), (StatusCode, HeaderMap, String)> {
-    let origin = validate_cors(origin)?;
-    let mut headers = create_cors_headers(&origin);
-    headers.insert(CONTENT_TYPE, "application/json".parse().unwrap());
+) -> Result<Json<Vec<Value>>, (StatusCode, String)> {
+    validate_cors(origin)?;
 
-    let store_id = verify_token(token.token(), &state, &headers)?;
+    let store_id = verify_token(token.token(), &state)?;
 
-    ensure_store_id!(payload, store_id, headers);
+    ensure_store_id!(payload, store_id);
 
     match list_key_versions_impl(payload, &state).await {
-        Ok(res) => Ok((headers, Json(res))),
-        Err(e) => Err(handle_anyhow_error(e, headers)),
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(handle_anyhow_error("list_key_versions", e)),
     }
 }
 
@@ -195,45 +178,31 @@ pub async fn health_check() -> Result<Json<()>, (StatusCode, String)> {
     Ok(Json(()))
 }
 
-pub fn validate_cors(
-    origin: Option<TypedHeader<Origin>>,
-) -> Result<String, (StatusCode, HeaderMap, String)> {
+pub fn valid_origin(origin: &str) -> bool {
+    ALLOWED_ORIGINS.contains(&origin)
+        || origin.ends_with(ALLOWED_SUBDOMAIN)
+        || origin.starts_with(ALLOWED_LOCALHOST)
+}
+
+pub fn validate_cors(origin: Option<TypedHeader<Origin>>) -> Result<(), (StatusCode, String)> {
     if let Some(TypedHeader(origin)) = origin {
         if origin.is_null() {
-            return Ok("*".to_string());
+            return Ok(());
         }
 
         let origin_str = origin.to_string();
-        if ALLOWED_ORIGINS.contains(&origin_str.as_str())
-            || origin_str.ends_with(ALLOWED_SUBDOMAIN)
-            || origin_str.starts_with(ALLOWED_LOCALHOST)
-        {
-            return Ok(origin_str);
+        if valid_origin(&origin_str) {
+            return Ok(());
         } else {
-            let headers = create_cors_headers("*");
             // The origin is not in the allowed list block the request
-            return Err((StatusCode::NOT_FOUND, headers, String::new()));
+            return Err((StatusCode::NOT_FOUND, String::new()));
         }
     }
 
-    Ok("*".to_string())
+    Ok(())
 }
 
-pub fn create_cors_headers(origin: &str) -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(ACCESS_CONTROL_ALLOW_ORIGIN, origin.parse().unwrap());
-    headers.insert(
-        ACCESS_CONTROL_ALLOW_METHODS,
-        "GET, POST, PUT, DELETE, OPTIONS".parse().unwrap(),
-    );
-    headers.insert(ACCESS_CONTROL_ALLOW_HEADERS, "*".parse().unwrap());
-    headers
-}
-
-pub(crate) fn handle_anyhow_error(
-    err: anyhow::Error,
-    headers: HeaderMap,
-) -> (StatusCode, HeaderMap, String) {
-    error!("Error: {err:?}");
-    (StatusCode::BAD_REQUEST, headers, format!("{err}"))
+pub(crate) fn handle_anyhow_error(function: &str, err: anyhow::Error) -> (StatusCode, String) {
+    error!("Error in {function}: {err:?}");
+    (StatusCode::BAD_REQUEST, format!("{err}"))
 }

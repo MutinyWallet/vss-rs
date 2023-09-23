@@ -8,9 +8,9 @@ RUN --mount=type=cache,target=/usr/local/cargo,from=rust:latest,source=/usr/loca
     cargo build --release && mv ./target/release/vss-rs ./vss-rs
 
 # Runtime image
-FROM debian:bookworm-slim
+FROM debian:bullseye-slim
 
-RUN apt update && apt install -y openssl libpq-dev pkg-config libc6
+RUN apt update && apt install -y openssl libpq-dev pkg-config libc6 openssl libssl-dev libpq5 ca-certificates
 
 # Run as "app" user
 RUN useradd -ms /bin/bash app

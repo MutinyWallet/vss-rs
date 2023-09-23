@@ -1,5 +1,5 @@
 use crate::State;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use jwt_compact::alg::Es256k;
 use jwt_compact::{AlgorithmExt, TimeOptions, Token, UntrustedToken};
 use log::error;
@@ -7,20 +7,12 @@ use secp256k1::PublicKey;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 
-pub(crate) fn verify_token(
-    token: &str,
-    state: &State,
-    headers: &HeaderMap,
-) -> Result<String, (StatusCode, HeaderMap, String)> {
+pub(crate) fn verify_token(token: &str, state: &State) -> Result<String, (StatusCode, String)> {
     let es256k1 = Es256k::<Sha256>::new(state.secp.clone());
 
     validate_jwt_from_user(token, state.auth_key, &es256k1).map_err(|e| {
         error!("Unauthorized: {e}");
-        (
-            StatusCode::UNAUTHORIZED,
-            headers.clone(),
-            format!("Unauthorized: {e}"),
-        )
+        (StatusCode::UNAUTHORIZED, format!("Unauthorized: {e}"))
     })
 }
 
