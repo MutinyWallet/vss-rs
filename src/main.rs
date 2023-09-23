@@ -3,12 +3,9 @@ use axum::headers::Origin;
 use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{get, post, put};
 use axum::{http, Extension, Router, TypedHeader};
-use native_tls::TlsConnector;
-use postgres_native_tls::MakeTlsConnector;
+use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::PgConnection;
 use secp256k1::{All, PublicKey, Secp256k1};
-use std::str::FromStr;
-use std::sync::Arc;
-use tokio_postgres::{Client, Config};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 mod auth;
@@ -31,7 +28,7 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 
 #[derive(Clone)]
 pub struct State {
-    pub client: Arc<Client>,
+    db_pool: Pool<ConnectionManager<PgConnection>>,
     pub auth_key: PublicKey,
     pub secp: Secp256k1<All>,
 }
@@ -54,26 +51,18 @@ async fn main() -> anyhow::Result<()> {
     let auth_key_bytes = hex::decode(auth_key)?;
     let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
 
-    let tls = TlsConnector::new()?;
-    let connector = MakeTlsConnector::new(tls);
-
-    // Connect to the database.
-    let mut config = Config::from_str(&pg_url).unwrap();
-    config.pgbouncer_mode(true);
-    let (client, connection) = config.connect(connector).await?;
-
-    // The connection object performs the actual communication with the database,
-    // so spawn it off to run on its own.
-    tokio::spawn(async move {
-        if let Err(e) = connection.await {
-            panic!("db connection error: {e}");
-        }
-    });
+    // DB management
+    let manager = ConnectionManager::<PgConnection>::new(&pg_url);
+    let db_pool = Pool::builder()
+        .max_size(10) // should be a multiple of 100, our database connection limit
+        .test_on_check_out(true)
+        .build(manager)
+        .expect("Could not build connection pool");
 
     let secp = Secp256k1::new();
 
     let state = State {
-        client: Arc::new(client),
+        db_pool,
         auth_key,
         secp,
     };

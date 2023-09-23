@@ -6,6 +6,7 @@ use axum::headers::authorization::Bearer;
 use axum::headers::{Authorization, Origin};
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
+use diesel::Connection;
 use log::{debug, error, trace};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -39,7 +40,9 @@ pub async fn get_object_impl(
     trace!("get_object_impl: {req:?}");
     let store_id = req.store_id.expect("must have");
 
-    let item = VssItem::get_item(&state.client, &store_id, &req.key).await?;
+    let mut conn = state.db_pool.get()?;
+
+    let item = VssItem::get_item(&mut conn, &store_id, &req.key)?;
 
     Ok(item.and_then(|i| i.into_kv()))
 }
@@ -99,10 +102,15 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 
     let store_id = req.store_id.expect("must have");
 
-    // todo use transaction
-    for kv in req.transaction_items {
-        VssItem::put_item(&state.client, &store_id, &kv.key, &kv.value.0, kv.version).await?;
-    }
+    let mut conn = state.db_pool.get()?;
+
+    conn.transaction::<_, anyhow::Error, _>(|conn| {
+        for kv in req.transaction_items {
+            VssItem::put_item(conn, &store_id, &kv.key, &kv.value.0, kv.version)?;
+        }
+
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -140,8 +148,9 @@ pub async fn list_key_versions_impl(
     // todo pagination
     let store_id = req.store_id.expect("must have");
 
-    let versions =
-        VssItem::list_key_versions(&state.client, &store_id, req.key_prefix.as_ref()).await?;
+    let mut conn = state.db_pool.get()?;
+
+    let versions = VssItem::list_key_versions(&mut conn, &store_id, req.key_prefix.as_deref())?;
 
     let json = versions
         .into_iter()

@@ -6,6 +6,7 @@ use axum::headers::Authorization;
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
 use chrono::{DateTime, NaiveDateTime, Utc};
+use diesel::Connection;
 use log::{error, info};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
@@ -77,19 +78,18 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
             .send_string(&payload.to_string())?;
         let items: Vec<Item> = resp.into_json()?;
 
+        let mut conn = state.db_pool.get().unwrap();
+
         // Insert values into DB
-        for item in items.iter() {
-            if let Ok(value) = base64::decode(&item.value) {
-                VssItem::put_item(
-                    &state.client,
-                    &item.store_id,
-                    &item.key,
-                    &value,
-                    item.version,
-                )
-                .await?;
+        conn.transaction::<_, anyhow::Error, _>(|conn| {
+            for item in items.iter() {
+                if let Ok(value) = base64::decode(&item.value) {
+                    VssItem::put_item(conn, &item.store_id, &item.key, &value, item.version)?;
+                }
             }
-        }
+
+            Ok(())
+        })?;
 
         if items.len() < limit {
             finished = true;
