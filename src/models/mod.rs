@@ -24,12 +24,11 @@ impl VssItem {
         store_id: &String,
         key: &String,
     ) -> anyhow::Result<Option<VssItem>> {
-        let stmt = client
-            .prepare("SELECT * FROM vss_db WHERE store_id = $1 AND key = $2")
-            .await?;
-
         client
-            .query_opt(&stmt, &[store_id, key])
+            .query_opt(
+                "SELECT * FROM vss_db WHERE store_id = $1 AND key = $2",
+                &[store_id, key],
+            )
             .await?
             .map(row_to_vss_item)
             .transpose()
@@ -42,18 +41,12 @@ impl VssItem {
         value: &Vec<u8>,
         version: i64,
     ) -> anyhow::Result<()> {
-        // Use Postgres built-in functions for safe escaping
-        let store_id_escaped = format!("quote_literal('{}')", store_id);
-        let key_escaped = format!("quote_literal('{}')", key);
-
-        // For bytea data, using E'' syntax
-        let value_escaped = format!("E'\\\\x{}'", hex::encode(value));
-
-        let sql = format!(
-            "SELECT upsert_vss_db({}, {}, {}, {});",
-            store_id_escaped, key_escaped, value_escaped, version
-        );
-        client.simple_query(&sql).await?;
+        client
+            .execute(
+                "SELECT upsert_vss_db($1, $2, $3, $4)",
+                &[store_id, key, value, &version],
+            )
+            .await?;
 
         Ok(())
     }
@@ -63,43 +56,32 @@ impl VssItem {
         store_id: &String,
         prefix: Option<&String>,
     ) -> anyhow::Result<Vec<(String, i64)>> {
-        let store_id_escaped = format!("quote_literal('{}')", store_id);
         let rows = match prefix {
-            Some(prefix) => {
-                // Safely escape the inputs using quote_literal
-                let prefix_escaped = format!("quote_literal('{}') || '%'", prefix);
-                let sql = format!(
-                    "SELECT key, version FROM vss_db WHERE store_id = {} AND key ILIKE {}",
-                    store_id_escaped, prefix_escaped
-                );
-                client.simple_query(&sql).await?
-            }
+            Some(prefix) => client
+                .query(
+                    "SELECT key, version FROM vss_db WHERE store_id = $1 AND key ILIKE $2 || '%'",
+                    &[store_id, prefix],
+                )
+                .await?,
             None => {
-                let sql = format!(
-                    "SELECT key, version FROM vss_db WHERE store_id = {}",
-                    store_id_escaped
-                );
-                client.simple_query(&sql).await?
+                client
+                    .query(
+                        "SELECT key, version FROM vss_db WHERE store_id = $1",
+                        &[store_id],
+                    )
+                    .await?
             }
         };
 
-        let mut res = Vec::new();
-        // Parse results
-        for message in rows {
-            if let tokio_postgres::SimpleQueryMessage::Row(row) = message {
-                let key: String = row
-                    .get("key")
-                    .ok_or(anyhow::anyhow!("key not found"))?
-                    .to_string();
+        let res = rows
+            .into_iter()
+            .map(|row| {
+                let key: String = row.get(0);
+                let version: i64 = row.get(1);
 
-                let version: i64 = row
-                    .get("version")
-                    .ok_or(anyhow::anyhow!("version not found"))?
-                    .parse()?;
-
-                res.push((key, version));
-            }
-        }
+                (key, version)
+            })
+            .collect();
 
         Ok(res)
     }
@@ -130,15 +112,17 @@ mod test {
     use secp256k1::Secp256k1;
     use std::str::FromStr;
     use std::sync::Arc;
-    use tokio_postgres::NoTls;
+    use tokio_postgres::{Config, NoTls};
 
     const PUBKEY: &str = "04547d92b618856f4eda84a64ec32f1694c9608a3f9dc73e91f08b5daa087260164fbc9e2a563cf4c5ef9f4c614fd9dfca7582f8de429a4799a4b202fbe80a7db5";
 
     async fn init_state() -> State {
         dotenv::dotenv().ok();
         let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let mut config = Config::from_str(&pg_url).unwrap();
+        config.pgbouncer_mode(true);
         // Connect to the database.
-        let (client, connection) = tokio_postgres::connect(&pg_url, NoTls).await.unwrap();
+        let (client, connection) = config.connect(NoTls).await.unwrap();
 
         // The connection object performs the actual communication with the database,
         // so spawn it off to run on its own.
@@ -171,7 +155,7 @@ mod test {
     async fn clear_database(state: &State) {
         state
             .client
-            .execute("DROP TABLE vss_db", &[])
+            .simple_query("DROP TABLE vss_db")
             .await
             .unwrap();
     }

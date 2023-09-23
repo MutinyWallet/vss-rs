@@ -3,11 +3,12 @@ use axum::headers::Origin;
 use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{get, post, put};
 use axum::{http, Extension, Router, TypedHeader};
-use openssl::ssl::{SslConnector, SslMethod};
-use postgres_openssl::MakeTlsConnector;
+use native_tls::TlsConnector;
+use postgres_native_tls::MakeTlsConnector;
 use secp256k1::{All, PublicKey, Secp256k1};
+use std::str::FromStr;
 use std::sync::Arc;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, Config};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
 mod auth;
@@ -53,17 +54,19 @@ async fn main() -> anyhow::Result<()> {
     let auth_key_bytes = hex::decode(auth_key)?;
     let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
 
-    let builder = SslConnector::builder(SslMethod::tls())?;
-    let connector = MakeTlsConnector::new(builder.build());
+    let tls = TlsConnector::new()?;
+    let connector = MakeTlsConnector::new(tls);
 
     // Connect to the database.
-    let (client, connection) = tokio_postgres::connect(&pg_url, connector).await?;
+    let mut config = Config::from_str(&pg_url).unwrap();
+    config.pgbouncer_mode(true);
+    let (client, connection) = config.connect(connector).await?;
 
     // The connection object performs the actual communication with the database,
     // so spawn it off to run on its own.
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("db connection error: {e}");
+            panic!("db connection error: {e}");
         }
     });
 

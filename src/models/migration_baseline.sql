@@ -1,4 +1,4 @@
-CREATE TABLE vss_db
+CREATE TABLE IF NOT EXISTS vss_db
 (
     store_id TEXT NOT NULL CHECK (store_id != ''),
     key TEXT NOT NULL,
