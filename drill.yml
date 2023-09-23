@@ -1,0 +1,27 @@
+base: 'https://vss-staging.fly.dev'
+concurrency: 250
+iterations: 2000
+
+plan:
+  - name: Health Check
+    request:
+      method: GET
+      url: /health-check
+
+  - name: Put Objects
+    request:
+      method: PUT
+      url: /putObjects
+      body: '{"transaction_items": [{"key": "key", "value": [0, 1, 2], "version": 0}]}'
+      headers:
+        Content-Type: 'application/json'
+        Authorization: Bearer eyJhbGciOiJFUzI1NksiLCJraWQiOiIwMzU0N2Q5MmI2MTg4NTZmNGVkYTg0YTY0ZWMzMmYxNjk0Yzk2MDhhM2Y5ZGM3M2U5MWYwOGI1ZGFhMDg3MjYwMTYifQ.eyJleHAiOjE2OTU0NTc4MjgsIm5iZiI6MTY5NTQ1MDYyOCwiaWF0IjoxNjk1NDU0MjI4LCJzdWIiOiIwMjlhOGYwY2MxZWNmZDU5NWNjNzQyYWU5OGU4NDZlNDRjODdmMWJjYWVjNzcxOTZhOTc3MzFjNzllMmJmZDI1ODUifQ.llJlMub-FWU9tgmQRMchziyg6jLGOgKYPq5DOm4dOGUqMCtDyRQX--ILBLhgkHTVhTy0EFyYu0x4clVcb7kV0A
+
+  - name: Get Object
+    request:
+      method: POST
+      url: /getObject
+      body: '{"key": "key"}'
+      headers:
+        Content-Type: 'application/json'
+        Authorization: Bearer eyJhbGciOiJFUzI1NksiLCJraWQiOiIwMzU0N2Q5MmI2MTg4NTZmNGVkYTg0YTY0ZWMzMmYxNjk0Yzk2MDhhM2Y5ZGM3M2U5MWYwOGI1ZGFhMDg3MjYwMTYifQ.eyJleHAiOjE2OTU0NTc4MjgsIm5iZiI6MTY5NTQ1MDYyOCwiaWF0IjoxNjk1NDU0MjI4LCJzdWIiOiIwMjlhOGYwY2MxZWNmZDU5NWNjNzQyYWU5OGU4NDZlNDRjODdmMWJjYWVjNzcxOTZhOTc3MzFjNzllMmJmZDI1ODUifQ.llJlMub-FWU9tgmQRMchziyg6jLGOgKYPq5DOm4dOGUqMCtDyRQX--ILBLhgkHTVhTy0EFyYu0x4clVcb7kV0A
