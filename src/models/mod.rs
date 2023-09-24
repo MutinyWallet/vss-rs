@@ -1,14 +1,11 @@
-use crate::routes::KeyValue;
+use crate::kv::KeyValue;
 use diesel::prelude::*;
 use diesel::sql_query;
-use diesel::sql_types::{BigInt, Text};
-use diesel_migrations::{embed_migrations, EmbeddedMigrations};
+use diesel::sql_types::{BigInt, Bytea, Text};
 use schema::vss_db;
 use serde::{Deserialize, Serialize};
 
-pub mod schema;
-
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+mod schema;
 
 #[derive(
     QueryableByName,
@@ -26,29 +23,17 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 pub struct VssItem {
     pub store_id: String,
     pub key: String,
-    pub value: Option<String>,
+    pub value: Option<Vec<u8>>,
     pub version: i64,
 
     created_date: chrono::NaiveDateTime,
     updated_date: chrono::NaiveDateTime,
 }
 
-#[derive(Insertable, AsChangeset)]
-#[diesel(table_name = vss_db)]
-pub struct NewVssItem {
-    pub store_id: String,
-    pub key: String,
-    pub value: Option<String>,
-    pub version: i64,
-}
-
 impl VssItem {
     pub fn into_kv(self) -> Option<KeyValue> {
-        self.value.map(|value| KeyValue {
-            key: self.key,
-            value,
-            version: self.version as u64,
-        })
+        self.value
+            .map(|value| KeyValue::new(self.key, value, self.version))
     }
 
     pub fn get_item(
@@ -67,20 +52,13 @@ impl VssItem {
         conn: &mut PgConnection,
         store_id: &str,
         key: &str,
-        value: &str,
-        version: u64,
+        value: &[u8],
+        version: i64,
     ) -> anyhow::Result<()> {
-        // safely convert u64 to i64
-        let version = if version >= i64::MAX as u64 {
-            i64::MAX
-        } else {
-            version as i64
-        };
-
-        sql_query(include_str!("put_item.sql"))
+        sql_query("SELECT upsert_vss_db($1, $2, $3, $4)")
             .bind::<Text, _>(store_id)
             .bind::<Text, _>(key)
-            .bind::<Text, _>(value)
+            .bind::<Bytea, _>(value)
             .bind::<BigInt, _>(version)
             .execute(conn)?;
 
@@ -112,19 +90,19 @@ mod test {
     use super::*;
     use crate::State;
     use diesel::r2d2::{ConnectionManager, Pool};
-    use diesel::{Connection, PgConnection, RunQueryDsl};
-    use diesel_migrations::MigrationHarness;
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     use secp256k1::Secp256k1;
     use std::str::FromStr;
 
     const PUBKEY: &str = "04547d92b618856f4eda84a64ec32f1694c9608a3f9dc73e91f08b5daa087260164fbc9e2a563cf4c5ef9f4c614fd9dfca7582f8de429a4799a4b202fbe80a7db5";
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
     fn init_state() -> State {
         dotenv::dotenv().ok();
         let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let manager = ConnectionManager::<PgConnection>::new(url);
         let db_pool = Pool::builder()
-            .max_size(16)
+            .max_size(10)
             .test_on_check_out(true)
             .build(manager)
             .expect("Could not build connection pool");
@@ -163,22 +141,22 @@ mod test {
 
         let store_id = "test_store_id";
         let key = "test";
-        let value = "test_value";
+        let value = [1, 2, 3];
         let version = 0;
 
         let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, value, version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
 
         let versions = VssItem::list_key_versions(&mut conn, store_id, None).unwrap();
 
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
-        assert_eq!(versions[0].1, version as i64);
+        assert_eq!(versions[0].1, version);
 
-        let new_value = "new_value";
+        let new_value = [4, 5, 6];
         let new_version = version + 1;
 
-        VssItem::put_item(&mut conn, store_id, key, new_value, new_version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &new_value, new_version).unwrap();
 
         let item = VssItem::get_item(&mut conn, store_id, key)
             .unwrap()
@@ -187,7 +165,7 @@ mod test {
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), new_value);
-        assert_eq!(item.version, new_version as i64);
+        assert_eq!(item.version, new_version);
 
         clear_database(&state);
     }
@@ -199,11 +177,11 @@ mod test {
 
         let store_id = "max_test_store_id";
         let key = "max_test";
-        let value = "test_value";
-        let version = u32::MAX as u64;
+        let value = [1, 2, 3];
+        let version = u32::MAX as i64;
 
         let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, value, version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
 
         let item = VssItem::get_item(&mut conn, store_id, key)
             .unwrap()
@@ -213,9 +191,9 @@ mod test {
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), value);
 
-        let new_value = "new_value";
+        let new_value = [4, 5, 6];
 
-        VssItem::put_item(&mut conn, store_id, key, new_value, version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &new_value, version).unwrap();
 
         let item = VssItem::get_item(&mut conn, store_id, key)
             .unwrap()
@@ -236,13 +214,13 @@ mod test {
         let store_id = "list_kv_test_store_id";
         let key = "kv_test";
         let key1 = "other_kv_test";
-        let value = "test_value";
+        let value = [1, 2, 3];
         let version = 0;
 
         let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, value, version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
 
-        VssItem::put_item(&mut conn, store_id, key1, value, version).unwrap();
+        VssItem::put_item(&mut conn, store_id, key1, &value, version).unwrap();
 
         let versions = VssItem::list_key_versions(&mut conn, store_id, None).unwrap();
         assert_eq!(versions.len(), 2);
@@ -250,12 +228,12 @@ mod test {
         let versions = VssItem::list_key_versions(&mut conn, store_id, Some("kv")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
-        assert_eq!(versions[0].1, version as i64);
+        assert_eq!(versions[0].1, version);
 
         let versions = VssItem::list_key_versions(&mut conn, store_id, Some("other")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key1);
-        assert_eq!(versions[0].1, version as i64);
+        assert_eq!(versions[0].1, version);
 
         clear_database(&state);
     }

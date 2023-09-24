@@ -1,15 +1,15 @@
-use crate::models::MIGRATIONS;
 use crate::routes::*;
-use axum::http::{Method, StatusCode, Uri};
+use axum::headers::Origin;
+use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{get, post, put};
-use axum::{http, Extension, Router};
+use axum::{http, Extension, Router, TypedHeader};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
-use diesel_migrations::MigrationHarness;
 use secp256k1::{All, PublicKey, Secp256k1};
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 mod auth;
+mod kv;
 mod migration;
 mod models;
 mod routes;
@@ -29,8 +29,8 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 #[derive(Clone)]
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
-    auth_key: PublicKey,
-    secp: Secp256k1<All>,
+    pub auth_key: PublicKey,
+    pub secp: Secp256k1<All>,
 }
 
 #[tokio::main]
@@ -54,16 +54,10 @@ async fn main() -> anyhow::Result<()> {
     // DB management
     let manager = ConnectionManager::<PgConnection>::new(&pg_url);
     let db_pool = Pool::builder()
-        .max_size(16)
+        .max_size(10) // should be a multiple of 100, our database connection limit
         .test_on_check_out(true)
         .build(manager)
         .expect("Could not build connection pool");
-
-    // run migrations
-    let mut connection = db_pool.get()?;
-    connection
-        .run_pending_migrations(MIGRATIONS)
-        .expect("migrations could not run");
 
     let secp = Secp256k1::new();
 
@@ -80,20 +74,34 @@ async fn main() -> anyhow::Result<()> {
     let server_router = Router::new()
         .route("/health-check", get(health_check))
         .route("/getObject", post(get_object))
+        .route("/v2/getObject", post(get_object_v2))
         .route("/putObjects", put(put_objects))
+        .route("/v2/putObjects", put(put_objects))
         .route("/listKeyVersions", post(list_key_versions))
+        .route("/v2/listKeyVersions", post(list_key_versions))
         .route("/migration", get(migration::migration))
         .fallback(fallback)
-        .layer(Extension(state.clone()))
         .layer(
             CorsLayer::new()
-                .allow_origin(Any)
-                .allow_headers(vec![
-                    http::header::CONTENT_TYPE,
-                    http::header::AUTHORIZATION,
-                ])
-                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::OPTIONS]),
-        );
+                .allow_origin(AllowOrigin::predicate(
+                    |origin: &HeaderValue, _request_parts: &Parts| {
+                        let Ok(origin) = origin.to_str() else {
+                            return false;
+                        };
+
+                        valid_origin(origin)
+                    },
+                ))
+                .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ]),
+        )
+        .layer(Extension(state));
 
     let server = axum::Server::bind(&addr).serve(server_router.into_make_service());
 
@@ -113,6 +121,10 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn fallback(uri: Uri) -> (StatusCode, String) {
+async fn fallback(origin: Option<TypedHeader<Origin>>, uri: Uri) -> (StatusCode, String) {
+    if let Err((status, msg)) = validate_cors(origin) {
+        return (status, msg);
+    };
+
     (StatusCode::NOT_FOUND, format!("No route for {uri}"))
 }

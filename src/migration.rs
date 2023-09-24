@@ -18,7 +18,7 @@ pub struct Item {
     pub key: String,
     #[serde(default)]
     pub value: String,
-    pub version: u32,
+    pub version: i64,
 
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_datetime_opt")]
@@ -66,8 +66,6 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
 
     let mut finished = false;
 
-    let mut conn = state.db_pool.get()?;
-
     info!("Starting migration");
     while !finished {
         info!("Fetching {limit} items from offset {offset}");
@@ -78,24 +76,22 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
             .post(&url)
             .set("x-api-key", &admin_key)
             .send_string(&payload.to_string())?;
-        let values: Vec<Item> = resp.into_json()?;
+        let items: Vec<Item> = resp.into_json()?;
+
+        let mut conn = state.db_pool.get().unwrap();
 
         // Insert values into DB
         conn.transaction::<_, anyhow::Error, _>(|conn| {
-            for value in values.iter() {
-                VssItem::put_item(
-                    conn,
-                    &value.store_id,
-                    &value.key,
-                    &value.value,
-                    value.version as u64,
-                )?;
+            for item in items.iter() {
+                if let Ok(value) = base64::decode(&item.value) {
+                    VssItem::put_item(conn, &item.store_id, &item.key, &value, item.version)?;
+                }
             }
 
             Ok(())
         })?;
 
-        if values.len() < limit {
+        if items.len() < limit {
             finished = true;
         } else {
             offset += limit;

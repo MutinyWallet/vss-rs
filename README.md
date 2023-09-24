@@ -8,3 +8,9 @@ You need a postgres database and an authentication key. These can be set in the 
 and `AUTH_KEY` respectively. This can be set in a `.env` file in the root of the project.
 
 To run the server, run `cargo run --release` in the root of the project.
+
+## Stress testing
+
+```
+AUTH_TOKEN=ey... drill --benchmark drill.yml -o 30
+```
