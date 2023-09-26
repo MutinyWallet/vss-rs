@@ -1,9 +1,11 @@
 name: Fly Deploy
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - master
+    tags: [ "*" ]
+  release:
+    types: [ published ]
 
 jobs:
   staging:
