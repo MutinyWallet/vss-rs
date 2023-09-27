@@ -14,15 +14,28 @@ use serde_json::{json, Value};
 macro_rules! ensure_store_id {
     ($payload:ident, $store_id:expr) => {
         match $payload.store_id {
-            None => $payload.store_id = Some($store_id),
-            Some(ref id) => {
-                if id != &$store_id {
+            None => {
+                // if neither has a store id, return an error
+                if $store_id.is_none() {
                     return Err((
                         StatusCode::UNAUTHORIZED,
-                        format!("Unauthorized: store_id mismatch"),
+                        format!("Unauthorized: store_id required"),
                     ));
                 }
+                $payload.store_id = $store_id
             }
+            Some(ref id) => match $store_id {
+                None => (),
+                Some(ref store_id) => {
+                    // if both have a store id, make sure they match
+                    if id != store_id {
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            format!("Unauthorized: store_id mismatch"),
+                        ));
+                    }
+                }
+            },
         }
     };
 }

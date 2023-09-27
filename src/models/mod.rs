@@ -113,7 +113,7 @@ mod test {
             .run_pending_migrations(MIGRATIONS)
             .expect("migrations could not run");
 
-        let auth_key = secp256k1::PublicKey::from_str(PUBKEY).unwrap();
+        let auth_key = secp256k1::PublicKey::from_str(PUBKEY).ok();
 
         let secp = Secp256k1::new();
 

@@ -29,7 +29,7 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 #[derive(Clone)]
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
-    pub auth_key: PublicKey,
+    pub auth_key: Option<PublicKey>,
     pub secp: Secp256k1<All>,
 }
 
@@ -41,15 +41,20 @@ async fn main() -> anyhow::Result<()> {
 
     // get values key from env
     let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let auth_key = std::env::var("AUTH_KEY").expect("AUTH_KEY must be set");
     let port: u16 = std::env::var("VSS_PORT")
         .ok()
         .map(|p| p.parse::<u16>())
         .transpose()?
         .unwrap_or(8080);
 
-    let auth_key_bytes = hex::decode(auth_key)?;
-    let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
+    let auth_key = std::env::var("AUTH_KEY").ok();
+    let auth_key = match auth_key {
+        None => None,
+        Some(data) => {
+            let auth_key_bytes = hex::decode(data)?;
+            Some(PublicKey::from_slice(&auth_key_bytes)?)
+        }
+    };
 
     // DB management
     let manager = ConnectionManager::<PgConnection>::new(&pg_url);
