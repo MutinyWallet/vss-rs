@@ -30,6 +30,7 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
     pub auth_key: Option<PublicKey>,
+    pub self_hosted: bool,
     pub secp: Secp256k1<All>,
 }
 
@@ -66,20 +67,21 @@ async fn main() -> anyhow::Result<()> {
 
     let secp = Secp256k1::new();
 
+    let self_hosted = std::env::var("SELF_HOST")
+        .ok()
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+
     let state = State {
         db_pool,
         auth_key,
+        self_hosted,
         secp,
     };
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{port}")
         .parse()
         .expect("Failed to parse bind/port for webserver");
-
-    let self_hosted = std::env::var("SELF_HOST")
-        .ok()
-        .map(|s| s == "true" || s == "1")
-        .unwrap_or(false);
 
     // if the server is self hosted, allow all origins
     // otherwise, only allow the origins in ALLOWED_ORIGINS

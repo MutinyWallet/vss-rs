@@ -62,14 +62,19 @@ pub async fn get_object_impl(
 
 pub async fn get_object(
     origin: Option<TypedHeader<Origin>>,
-    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
+    auth: Option<TypedHeader<Authorization<Bearer>>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
 ) -> Result<Json<Option<KeyValueOld>>, (StatusCode, String)> {
     debug!("get_object: {payload:?}");
-    validate_cors(origin)?;
+    if !state.self_hosted {
+        validate_cors(origin)?;
+    }
 
-    let store_id = verify_token(token.token(), &state)?;
+    let store_id = auth
+        .map(|TypedHeader(token)| verify_token(token.token(), &state))
+        .transpose()?
+        .flatten();
 
     ensure_store_id!(payload, store_id);
 
@@ -82,14 +87,19 @@ pub async fn get_object(
 
 pub async fn get_object_v2(
     origin: Option<TypedHeader<Origin>>,
-    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
+    auth: Option<TypedHeader<Authorization<Bearer>>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<GetObjectRequest>,
 ) -> Result<Json<Option<KeyValue>>, (StatusCode, String)> {
     debug!("get_object v2: {payload:?}");
-    validate_cors(origin)?;
+    if !state.self_hosted {
+        validate_cors(origin)?;
+    }
 
-    let store_id = verify_token(token.token(), &state)?;
+    let store_id = auth
+        .map(|TypedHeader(token)| verify_token(token.token(), &state))
+        .transpose()?
+        .flatten();
 
     ensure_store_id!(payload, store_id);
 
@@ -130,13 +140,18 @@ pub async fn put_objects_impl(req: PutObjectsRequest, state: &State) -> anyhow::
 
 pub async fn put_objects(
     origin: Option<TypedHeader<Origin>>,
-    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
+    auth: Option<TypedHeader<Authorization<Bearer>>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<PutObjectsRequest>,
 ) -> Result<Json<()>, (StatusCode, String)> {
-    validate_cors(origin)?;
+    if !state.self_hosted {
+        validate_cors(origin)?;
+    }
 
-    let store_id = verify_token(token.token(), &state)?;
+    let store_id = auth
+        .map(|TypedHeader(token)| verify_token(token.token(), &state))
+        .transpose()?
+        .flatten();
 
     ensure_store_id!(payload, store_id);
 
@@ -180,13 +195,18 @@ pub async fn list_key_versions_impl(
 
 pub async fn list_key_versions(
     origin: Option<TypedHeader<Origin>>,
-    TypedHeader(token): TypedHeader<Authorization<Bearer>>,
+    auth: Option<TypedHeader<Authorization<Bearer>>>,
     Extension(state): Extension<State>,
     Json(mut payload): Json<ListKeyVersionsRequest>,
 ) -> Result<Json<Vec<Value>>, (StatusCode, String)> {
-    validate_cors(origin)?;
+    if !state.self_hosted {
+        validate_cors(origin)?;
+    }
 
-    let store_id = verify_token(token.token(), &state)?;
+    let store_id = auth
+        .map(|TypedHeader(token)| verify_token(token.token(), &state))
+        .transpose()?
+        .flatten();
 
     ensure_store_id!(payload, store_id);
 
