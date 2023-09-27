@@ -29,7 +29,7 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 #[derive(Clone)]
 pub struct State {
     db_pool: Pool<ConnectionManager<PgConnection>>,
-    pub auth_key: PublicKey,
+    pub auth_key: Option<PublicKey>,
     pub secp: Secp256k1<All>,
 }
 
@@ -41,15 +41,20 @@ async fn main() -> anyhow::Result<()> {
 
     // get values key from env
     let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let auth_key = std::env::var("AUTH_KEY").expect("AUTH_KEY must be set");
     let port: u16 = std::env::var("VSS_PORT")
         .ok()
         .map(|p| p.parse::<u16>())
         .transpose()?
         .unwrap_or(8080);
 
-    let auth_key_bytes = hex::decode(auth_key)?;
-    let auth_key = PublicKey::from_slice(&auth_key_bytes)?;
+    let auth_key = std::env::var("AUTH_KEY").ok();
+    let auth_key = match auth_key {
+        None => None,
+        Some(data) => {
+            let auth_key_bytes = hex::decode(data)?;
+            Some(PublicKey::from_slice(&auth_key_bytes)?)
+        }
+    };
 
     // DB management
     let manager = ConnectionManager::<PgConnection>::new(&pg_url);
@@ -71,6 +76,25 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("Failed to parse bind/port for webserver");
 
+    let self_hosted = std::env::var("SELF_HOST")
+        .ok()
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+
+    // if the server is self hosted, allow all origins
+    // otherwise, only allow the origins in ALLOWED_ORIGINS
+    let cors_function = if self_hosted {
+        |_: &HeaderValue, _request_parts: &Parts| true
+    } else {
+        |origin: &HeaderValue, _request_parts: &Parts| {
+            let Ok(origin) = origin.to_str() else {
+                return false;
+            };
+
+            valid_origin(origin)
+        }
+    };
+
     let server_router = Router::new()
         .route("/health-check", get(health_check))
         .route("/getObject", post(get_object))
@@ -83,15 +107,7 @@ async fn main() -> anyhow::Result<()> {
         .fallback(fallback)
         .layer(
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(
-                    |origin: &HeaderValue, _request_parts: &Parts| {
-                        let Ok(origin) = origin.to_str() else {
-                            return false;
-                        };
-
-                        valid_origin(origin)
-                    },
-                ))
+                .allow_origin(AllowOrigin::predicate(cors_function))
                 .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
                 .allow_methods([
                     Method::GET,
