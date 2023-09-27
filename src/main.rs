@@ -76,6 +76,25 @@ async fn main() -> anyhow::Result<()> {
         .parse()
         .expect("Failed to parse bind/port for webserver");
 
+    let self_hosted = std::env::var("SELF_HOST")
+        .ok()
+        .map(|s| s == "true" || s == "1")
+        .unwrap_or(false);
+
+    // if the server is self hosted, allow all origins
+    // otherwise, only allow the origins in ALLOWED_ORIGINS
+    let cors_function = if self_hosted {
+        |_: &HeaderValue, _request_parts: &Parts| true
+    } else {
+        |origin: &HeaderValue, _request_parts: &Parts| {
+            let Ok(origin) = origin.to_str() else {
+                return false;
+            };
+
+            valid_origin(origin)
+        }
+    };
+
     let server_router = Router::new()
         .route("/health-check", get(health_check))
         .route("/getObject", post(get_object))
@@ -88,15 +107,7 @@ async fn main() -> anyhow::Result<()> {
         .fallback(fallback)
         .layer(
             CorsLayer::new()
-                .allow_origin(AllowOrigin::predicate(
-                    |origin: &HeaderValue, _request_parts: &Parts| {
-                        let Ok(origin) = origin.to_str() else {
-                            return false;
-                        };
-
-                        valid_origin(origin)
-                    },
-                ))
+                .allow_origin(AllowOrigin::predicate(cors_function))
                 .allow_headers([http::header::CONTENT_TYPE, http::header::AUTHORIZATION])
                 .allow_methods([
                     Method::GET,
