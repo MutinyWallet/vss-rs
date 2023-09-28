@@ -1,5 +1,6 @@
 use crate::models::MIGRATIONS;
 use crate::routes::*;
+use axum::extract::DefaultBodyLimit;
 use axum::headers::Origin;
 use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
 use axum::routing::{get, post, put};
@@ -129,6 +130,7 @@ async fn main() -> anyhow::Result<()> {
                     Method::OPTIONS,
                 ]),
         )
+        .layer(DefaultBodyLimit::max(100_000_000)) // max 100mb body size
         .layer(Extension(state));
 
     let server = axum::Server::bind(&addr).serve(server_router.into_make_service());
