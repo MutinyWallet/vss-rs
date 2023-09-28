@@ -2,10 +2,13 @@ use crate::kv::KeyValue;
 use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::sql_types::{BigInt, Bytea, Text};
+use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use schema::vss_db;
 use serde::{Deserialize, Serialize};
 
 mod schema;
+
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 #[derive(
     QueryableByName,
@@ -90,12 +93,11 @@ mod test {
     use super::*;
     use crate::State;
     use diesel::r2d2::{ConnectionManager, Pool};
-    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+    use diesel_migrations::MigrationHarness;
     use secp256k1::Secp256k1;
     use std::str::FromStr;
 
     const PUBKEY: &str = "04547d92b618856f4eda84a64ec32f1694c9608a3f9dc73e91f08b5daa087260164fbc9e2a563cf4c5ef9f4c614fd9dfca7582f8de429a4799a4b202fbe80a7db5";
-    const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
     fn init_state() -> State {
         dotenv::dotenv().ok();
@@ -120,6 +122,7 @@ mod test {
         State {
             db_pool,
             auth_key,
+            self_hosted: false,
             secp,
         }
     }

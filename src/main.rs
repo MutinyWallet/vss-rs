@@ -1,3 +1,4 @@
+use crate::models::MIGRATIONS;
 use crate::routes::*;
 use axum::headers::Origin;
 use axum::http::{request::Parts, HeaderValue, Method, StatusCode, Uri};
@@ -5,6 +6,7 @@ use axum::routing::{get, post, put};
 use axum::{http, Extension, Router, TypedHeader};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::PgConnection;
+use diesel_migrations::MigrationHarness;
 use secp256k1::{All, PublicKey, Secp256k1};
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
@@ -71,6 +73,14 @@ async fn main() -> anyhow::Result<()> {
         .ok()
         .map(|s| s == "true" || s == "1")
         .unwrap_or(false);
+
+    // run migrations if self hosted, otherwise assume they have been run manually
+    if self_hosted {
+        let mut connection = db_pool.get()?;
+        connection
+            .run_pending_migrations(MIGRATIONS)
+            .expect("migrations could not run");
+    }
 
     let state = State {
         db_pool,
