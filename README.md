@@ -10,8 +10,3 @@ authentication key, you can set `SELF_HOST=true` in the `.env` file and the serv
 
 To run the server, run `cargo run --release` in the root of the project.
 
-## Stress testing
-
-```
-AUTH_TOKEN=ey... drill --benchmark drill.yml -o 30
-```
