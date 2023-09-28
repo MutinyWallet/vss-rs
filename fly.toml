@@ -33,4 +33,4 @@ primary_region = "dfw"
   path = "/health-check"
 
 [deploy]
-  strategy = "bluegreen"
+  strategy = "canary"
