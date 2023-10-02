@@ -1,6 +1,6 @@
 # vss-rs
 
-A rust implementation of a VSS server.
+A rust implementation of a VSS server. Based on [LDK's `vss-server` reference implementation](https://github.com/lightningdevkit/vss-server).
 
 ## Usage
 
