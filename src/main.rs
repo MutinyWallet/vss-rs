@@ -39,9 +39,9 @@ pub struct State {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    pretty_env_logger::try_init()?;
     // Load .env file
     dotenv::dotenv().ok();
+    pretty_env_logger::try_init()?;
 
     // get values key from env
     let pg_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
