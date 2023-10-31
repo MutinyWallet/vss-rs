@@ -25,9 +25,10 @@ primary_region = "dfw"
     soft_limit = 200
     hard_limit = 250
 
+# Checks our health endpoint every 5 seconds, starting 10 seconds after the VM starts
 [[http_service.checks]]
   grace_period = "10s"
-  interval = "30s"
+  interval = "5s"
   method = "GET"
   timeout = "5s"
   path = "/health-check"
