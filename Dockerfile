@@ -1,4 +1,4 @@
-FROM rust:1.67 as builder
+FROM rust:1.67-bookworm as builder
 
 WORKDIR /usr/src/app
 COPY . .
@@ -33,4 +33,4 @@ ENV VSS_PORT=8080
 EXPOSE $VSS_PORT
 
 # Run the app
-CMD ./vss-rs
+CMD ["./vss-rs"]
