@@ -216,6 +216,46 @@ pub async fn list_key_versions(
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeleteObjectRequest {
+    pub store_id: Option<String>,
+    pub key: String,
+    pub version: i64,
+}
+
+async fn delete_object_impl(req: DeleteObjectRequest, state: &State) -> anyhow::Result<()> {
+    let store_id = req.store_id.expect("must have");
+
+    let mut conn = state.db_pool.get()?;
+
+    VssItem::delete_item(&mut conn, &store_id, &req.key, req.version)?;
+
+    Ok(())
+}
+
+pub async fn delete_object(
+    origin: Option<TypedHeader<Origin>>,
+    auth: Option<TypedHeader<Authorization<Bearer>>>,
+    Extension(state): Extension<State>,
+    Json(mut payload): Json<DeleteObjectRequest>,
+) -> Result<Json<()>, (StatusCode, String)> {
+    if !state.self_hosted {
+        validate_cors(origin)?;
+    }
+
+    let store_id = auth
+        .map(|TypedHeader(token)| verify_token(token.token(), &state))
+        .transpose()?
+        .flatten();
+
+    ensure_store_id!(payload, store_id);
+
+    match delete_object_impl(payload, &state).await {
+        Ok(res) => Ok(Json(res)),
+        Err(e) => Err(handle_anyhow_error("delete_object", e)),
+    }
+}
+
 pub async fn health_check() -> Result<Json<()>, (StatusCode, String)> {
     Ok(Json(()))
 }
