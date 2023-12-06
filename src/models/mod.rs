@@ -31,6 +31,8 @@ pub struct VssItem {
 
     created_date: chrono::NaiveDateTime,
     updated_date: chrono::NaiveDateTime,
+
+    pub deleted: bool,
 }
 
 impl VssItem {
@@ -62,6 +64,21 @@ impl VssItem {
             .bind::<Text, _>(store_id)
             .bind::<Text, _>(key)
             .bind::<Bytea, _>(value)
+            .bind::<BigInt, _>(version)
+            .execute(conn)?;
+
+        Ok(())
+    }
+
+    pub fn delete_item(
+        conn: &mut PgConnection,
+        store_id: &str,
+        key: &str,
+        version: i64,
+    ) -> anyhow::Result<()> {
+        sql_query("SELECT delete_item($1, $2, $3)")
+            .bind::<Text, _>(store_id)
+            .bind::<Text, _>(key)
             .bind::<BigInt, _>(version)
             .execute(conn)?;
 
@@ -205,6 +222,54 @@ mod test {
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), new_value);
+
+        clear_database(&state);
+    }
+
+    #[tokio::test]
+    async fn test_delete() {
+        let state = init_state();
+        clear_database(&state);
+
+        let store_id = "test_store_id";
+        let key = "test";
+        let value = [1, 2, 3];
+        let version = 0;
+
+        let mut conn = state.db_pool.get().unwrap();
+        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
+
+        let versions = VssItem::list_key_versions(&mut conn, store_id, None).unwrap();
+
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].0, key);
+        assert_eq!(versions[0].1, version);
+
+        // delete item
+        let new_version = version + 1;
+        VssItem::delete_item(&mut conn, store_id, key, new_version).unwrap();
+        let item = VssItem::get_item(&mut conn, store_id, key)
+            .unwrap()
+            .unwrap();
+        assert!(item.value.is_none());
+        assert!(item.deleted);
+
+        // bring item back with higher version
+
+        let final_value = [4, 5, 6];
+        let final_version = new_version + 1;
+
+        VssItem::put_item(&mut conn, store_id, key, &final_value, final_version).unwrap();
+
+        let item = VssItem::get_item(&mut conn, store_id, key)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(item.store_id, store_id);
+        assert_eq!(item.key, key);
+        assert_eq!(item.value.unwrap(), final_value);
+        assert_eq!(item.version, final_version);
+        assert!(!item.deleted);
 
         clear_database(&state);
     }

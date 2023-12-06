@@ -119,6 +119,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/v2/putObjects", put(put_objects))
         .route("/listKeyVersions", post(list_key_versions))
         .route("/v2/listKeyVersions", post(list_key_versions))
+        .route("/deleteObject", post(delete_object))
+        .route("/v2/deleteObject", post(delete_object))
         .route("/migration", get(migration::migration))
         .fallback(fallback)
         .layer(

@@ -8,5 +8,6 @@ diesel::table! {
         version -> Int8,
         created_date -> Timestamp,
         updated_date -> Timestamp,
+        deleted -> Bool,
     }
 }
