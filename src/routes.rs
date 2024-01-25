@@ -60,6 +60,7 @@ pub async fn get_object_impl(
     Ok(item.and_then(|i| i.into_kv()))
 }
 
+/// Returns value as base64-encoded string
 pub async fn get_object(
     origin: Option<TypedHeader<Origin>>,
     auth: Option<TypedHeader<Authorization<Bearer>>>,
@@ -85,6 +86,7 @@ pub async fn get_object(
     }
 }
 
+/// Returns value as a byte array
 pub async fn get_object_v2(
     origin: Option<TypedHeader<Origin>>,
     auth: Option<TypedHeader<Authorization<Bearer>>>,
