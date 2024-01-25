@@ -34,6 +34,8 @@ const ALLOWED_ORIGINS: [&str; 6] = [
 const ALLOWED_SUBDOMAIN: &str = ".mutiny-web.pages.dev";
 const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 
+const API_VERSION: &str = "v2";
+
 #[derive(Clone)]
 pub struct State {
     backend: Arc<dyn models::backend::VssBackend>,

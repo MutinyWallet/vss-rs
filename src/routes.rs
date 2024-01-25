@@ -1,6 +1,6 @@
 use crate::auth::verify_token;
 use crate::kv::{KeyValue, KeyValueOld};
-use crate::{State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN};
+use crate::{State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION};
 use axum::headers::authorization::Bearer;
 use axum::headers::{Authorization, Origin};
 use axum::http::StatusCode;
@@ -205,8 +205,26 @@ pub async fn list_key_versions(
     }
 }
 
-pub async fn health_check() -> Result<Json<()>, (StatusCode, String)> {
-    Ok(Json(()))
+#[derive(Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+}
+
+impl HealthResponse {
+    /// Fabricate a status: pass response without checking database connectivity
+    pub fn new_ok() -> Self {
+        Self {
+            status: String::from("pass"),
+            version: String::from(API_VERSION),
+        }
+    }
+}
+
+/// IETF draft RFC for HTTP API Health Checks:
+/// https://datatracker.ietf.org/doc/html/draft-inadarei-api-health-check
+pub async fn health_check() -> Result<Json<HealthResponse>, (StatusCode, String)> {
+    Ok(Json(HealthResponse::new_ok()))
 }
 
 pub fn valid_origin(origin: &str) -> bool {
