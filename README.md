@@ -38,10 +38,4 @@ In production usage, the VSS clients (lightning wallets) should authenticate wit
 
 ### Authentication Key
 
-The authentication key, set with `AUTH_KEY`, is a hex-encoded ECDSA _public_ key on the p256k1 curve and is used to validate the signature on a client-supplied JWT. The VSS client may have obtained the JWT from any issuing party as long as you set the appropriate public key here. The JWT should have set the `alg` parameter to `ES256K`. (see below) 
-
-### Aside on ES256K
-
-JWT RFAs define algorithms `ES256` and `ES256K` as ECDSA assymetric cryptography with `secp256r1` and `secp256k1`, respectively. `sep256k1` is much less common in general, but is famously used in Bitcoin and Tor. Unfortunately, many identity providers (JWT issuers) (a) may not support `ES256K` and (b) don't clearly differentiate between the two algorithms and state P256 when they really mean `secp256r1`.
-
-VSS-RS uses `ES256K` because we expect VSS clients (lightning wallets) to obtain JWT from an identity provider using a [LNURL-auth](https://github.com/lnurl/luds/blob/legacy/lnurl-auth.md) / [Login with Lightning!](https://lightninglogin.live/) service.
+The authentication key, set with `AUTH_KEY`, is a hex-encoded ECDSA _public_ key on the p256k1 curve and is used to validate the signature on a client-supplied JWT. The VSS client may have obtained the JWT from any issuing party as long as you set the appropriate public key here. The JWT should have set the `alg` parameter to `ES256K`. This is uncommon and should not be confused with `ES256`.
