@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::models::MIGRATIONS;
 use crate::routes::*;
 use axum::extract::DefaultBodyLimit;
@@ -34,7 +36,7 @@ const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
 
 #[derive(Clone)]
 pub struct State {
-    db_pool: Pool<ConnectionManager<PgConnection>>,
+    backend: Arc<dyn models::backend::VssBackend>,
     pub auth_key: Option<PublicKey>,
     pub self_hosted: bool,
     pub secp: Secp256k1<All>,
@@ -86,8 +88,9 @@ async fn main() -> anyhow::Result<()> {
             .expect("migrations could not run");
     }
 
+    let backend = Arc::new(models::backend::Postgres::new(db_pool));
     let state = State {
-        db_pool,
+        backend,
         auth_key,
         self_hosted,
         secp,

@@ -1,3 +1,4 @@
+use crate::kv::KeyValue;
 use crate::models::VssItem;
 use crate::State;
 use anyhow::anyhow;
@@ -6,7 +7,6 @@ use axum::headers::Authorization;
 use axum::http::StatusCode;
 use axum::{Extension, Json, TypedHeader};
 use chrono::{DateTime, NaiveDateTime, Utc};
-use diesel::Connection;
 use log::{error, info};
 use serde::{Deserialize, Deserializer};
 use serde_json::json;
@@ -46,6 +46,12 @@ where
     })
 }
 
+/// Migration assumes a v1 `get_object` response, which returns value as a base64-encoded string
+/// 
+/// Environment:
+///  - MIGRATION_URL
+///  - MIGRATION_BATCH_SIZE (default 100)
+///  - MIGRATION_START_INDEX (default 0)
 pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<()> {
     let client = Agent::new();
     let Ok(url) = std::env::var("MIGRATION_URL") else {
@@ -77,21 +83,25 @@ pub async fn migration_impl(admin_key: String, state: &State) -> anyhow::Result<
             .set("x-api-key", &admin_key)
             .send_string(&payload.to_string())?;
         let items: Vec<Item> = resp.into_json()?;
+        let nitems = items.len();   // we'll need this later and plan to consume items
 
-        let mut conn = state.db_pool.get().unwrap();
+        let backend = state.backend.clone();
+
+        // Original migration code didn't preserve timestamps
+        // neither does [`VssItem::from_kv`]
+        let vss_items: Vec<_> = items.into_iter().filter_map(|item| {
+            if let Ok(value) = base64::decode(&item.value) {
+                Some(VssItem::from_kv(&item.store_id, KeyValue::new(item.key, value, item.version)))
+            } else {
+                log::warn!("Failed to decode value during migration: {}", item.value);
+                None
+            }
+        }).collect();
 
         // Insert values into DB
-        conn.transaction::<_, anyhow::Error, _>(|conn| {
-            for item in items.iter() {
-                if let Ok(value) = base64::decode(&item.value) {
-                    VssItem::put_item(conn, &item.store_id, &item.key, &value, item.version)?;
-                }
-            }
+        backend.put_items(vss_items)?;
 
-            Ok(())
-        })?;
-
-        if items.len() < limit {
+        if nitems < limit {
             finished = true;
         } else {
             offset += limit;
