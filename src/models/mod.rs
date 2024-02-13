@@ -6,6 +6,7 @@ use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 use schema::vss_db;
 use serde::{Deserialize, Serialize};
 
+pub mod backend;
 mod schema;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -34,6 +35,17 @@ pub struct VssItem {
 }
 
 impl VssItem {
+    pub fn from_kv(store_id: &str, kv: KeyValue) -> Self {
+        Self {
+            store_id: String::from(store_id),
+            key: kv.key,
+            value: Some(kv.value.0),
+            version: kv.version,
+            // impl Default: unix epoch
+            created_date: chrono::NaiveDateTime::default(),
+            updated_date: chrono::NaiveDateTime::default(),
+        }
+    }
     pub fn into_kv(self) -> Option<KeyValue> {
         self.value
             .map(|value| KeyValue::new(self.key, value, self.version))
@@ -96,6 +108,7 @@ mod test {
     use diesel_migrations::MigrationHarness;
     use secp256k1::Secp256k1;
     use std::str::FromStr;
+    use std::sync::Arc;
 
     const PUBKEY: &str = "04547d92b618856f4eda84a64ec32f1694c9608a3f9dc73e91f08b5daa087260164fbc9e2a563cf4c5ef9f4c614fd9dfca7582f8de429a4799a4b202fbe80a7db5";
 
@@ -119,38 +132,31 @@ mod test {
 
         let secp = Secp256k1::new();
 
+        let backend = Arc::new(backend::Postgres::new(db_pool));
         State {
-            db_pool,
+            backend,
             auth_key,
             self_hosted: false,
             secp,
         }
     }
 
-    fn clear_database(state: &State) {
-        let conn = &mut state.db_pool.get().unwrap();
-
-        conn.transaction::<_, anyhow::Error, _>(|conn| {
-            diesel::delete(vss_db::table).execute(conn)?;
-            Ok(())
-        })
-        .unwrap();
-    }
 
     #[tokio::test]
     async fn test_vss_flow() {
         let state = init_state();
-        clear_database(&state);
+        let backend = state.backend.clone();
+
+        backend.clear_database();
 
         let store_id = "test_store_id";
         let key = "test";
         let value = [1, 2, 3];
         let version = 0;
 
-        let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
+        backend.put_item(store_id, key, &value, version).unwrap();
 
-        let versions = VssItem::list_key_versions(&mut conn, store_id, None).unwrap();
+        let versions = backend.list_key_versions(store_id, None).unwrap();
 
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
@@ -159,36 +165,33 @@ mod test {
         let new_value = [4, 5, 6];
         let new_version = version + 1;
 
-        VssItem::put_item(&mut conn, store_id, key, &new_value, new_version).unwrap();
+        backend.put_item(store_id, key, &new_value, new_version).unwrap();
 
-        let item = VssItem::get_item(&mut conn, store_id, key)
-            .unwrap()
-            .unwrap();
+        let item = backend.get_item(store_id, key).unwrap().unwrap();
 
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), new_value);
         assert_eq!(item.version, new_version);
 
-        clear_database(&state);
+        backend.clear_database();
     }
 
     #[tokio::test]
     async fn test_max_version_number() {
         let state = init_state();
-        clear_database(&state);
+        let backend = state.backend.clone();
+
+        backend.clear_database();
 
         let store_id = "max_test_store_id";
         let key = "max_test";
         let value = [1, 2, 3];
         let version = u32::MAX as i64;
 
-        let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
+        backend.put_item(store_id, key, &value, version).unwrap();
 
-        let item = VssItem::get_item(&mut conn, store_id, key)
-            .unwrap()
-            .unwrap();
+        let item = backend.get_item(store_id, key).unwrap().unwrap();
 
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
@@ -196,23 +199,23 @@ mod test {
 
         let new_value = [4, 5, 6];
 
-        VssItem::put_item(&mut conn, store_id, key, &new_value, version).unwrap();
+        backend.put_item(store_id, key, &new_value, version).unwrap();
 
-        let item = VssItem::get_item(&mut conn, store_id, key)
-            .unwrap()
-            .unwrap();
+        let item = backend.get_item(store_id, key).unwrap().unwrap();
 
         assert_eq!(item.store_id, store_id);
         assert_eq!(item.key, key);
         assert_eq!(item.value.unwrap(), new_value);
 
-        clear_database(&state);
+        backend.clear_database();
     }
 
     #[tokio::test]
     async fn test_list_key_versions() {
         let state = init_state();
-        clear_database(&state);
+        let backend = state.backend.clone();
+
+        backend.clear_database();
 
         let store_id = "list_kv_test_store_id";
         let key = "kv_test";
@@ -220,24 +223,23 @@ mod test {
         let value = [1, 2, 3];
         let version = 0;
 
-        let mut conn = state.db_pool.get().unwrap();
-        VssItem::put_item(&mut conn, store_id, key, &value, version).unwrap();
+        backend.put_item(store_id, key, &value, version).unwrap();
 
-        VssItem::put_item(&mut conn, store_id, key1, &value, version).unwrap();
+        backend.put_item(store_id, key1, &value, version).unwrap();
 
-        let versions = VssItem::list_key_versions(&mut conn, store_id, None).unwrap();
+        let versions = backend.list_key_versions(store_id, None).unwrap();
         assert_eq!(versions.len(), 2);
 
-        let versions = VssItem::list_key_versions(&mut conn, store_id, Some("kv")).unwrap();
+        let versions = backend.list_key_versions(store_id, Some("kv")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key);
         assert_eq!(versions[0].1, version);
 
-        let versions = VssItem::list_key_versions(&mut conn, store_id, Some("other")).unwrap();
+        let versions = backend.list_key_versions(store_id, Some("other")).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].0, key1);
         assert_eq!(versions[0].1, version);
 
-        clear_database(&state);
+        backend.clear_database();
     }
 }
