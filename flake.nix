@@ -22,6 +22,7 @@
           src = craneLib.cleanCargoSource (craneLib.path ./.);
 
           buildInputs = [
+            pkgs.just
             pkgs.openssl
             pkgs.zlib
             pkgs.postgresql
@@ -58,6 +59,7 @@
         devShells.default = craneLib.devShell {
           inputsFrom = [ my-crate ];
           packages = [
+            pkgs.just
             pkgs.openssl
             pkgs.zlib
             pkgs.postgresql
