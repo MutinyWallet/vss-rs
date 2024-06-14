@@ -31,6 +31,7 @@ const ALLOWED_ORIGINS: [&str; 6] = [
 
 const ALLOWED_SUBDOMAIN: &str = ".mutiny-web.pages.dev";
 const ALLOWED_LOCALHOST: &str = "http://127.0.0.1:";
+const ALLOWED_LAN: &str = "http://192.168.";
 
 const API_VERSION: &str = "v2";
 

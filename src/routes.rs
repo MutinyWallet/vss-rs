@@ -1,7 +1,9 @@
 use crate::auth::verify_token;
 use crate::kv::{KeyValue, KeyValueOld};
 use crate::models::VssItem;
-use crate::{State, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION};
+use crate::{
+    State, ALLOWED_LAN, ALLOWED_LOCALHOST, ALLOWED_ORIGINS, ALLOWED_SUBDOMAIN, API_VERSION,
+};
 use axum::headers::authorization::Bearer;
 use axum::headers::{Authorization, Origin};
 use axum::http::StatusCode;
@@ -244,6 +246,7 @@ pub fn valid_origin(origin: &str) -> bool {
     ALLOWED_ORIGINS.contains(&origin)
         || origin.ends_with(ALLOWED_SUBDOMAIN)
         || origin.starts_with(ALLOWED_LOCALHOST)
+        || origin.starts_with(ALLOWED_LAN)
 }
 
 pub fn validate_cors(origin: Option<TypedHeader<Origin>>) -> Result<(), (StatusCode, String)> {
